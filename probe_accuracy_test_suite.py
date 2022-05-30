@@ -25,7 +25,7 @@ from scipy import rand
 
 MOONRAKER_URL = "http://localhost:7125"
 KLIPPY_LOG = "/home/pi/klipper_logs/klippy.log"
-DATA_DIR = "/home/pi/probe_accuracy_results"
+DATA_DIR = "/home/pi/probe_accuracy_tests/data"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 
 

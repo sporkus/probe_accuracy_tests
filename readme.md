@@ -15,14 +15,22 @@
 #### Running individual test
 Use `python3 probe_accuracy_test_suite.py -h` to see all the options
 Example: `python3 probe_accuracy_test_suite.py --corner`
+
+
+### Installation
+
+On your printer:
+```
+curl -sSL https://raw.githubusercontent.com/sporkus/probe_accuracy_tests/master/install.py | bash
+```
+
+
 ### Requirements
 
 #### Python
-* pandas
-* requests
-* matplotlib
 
-If they are not installed - they can be installed with `pip3 install pandas requests matplotlib`
+See requirements.txt
+If they are not installed - they can be installed with `pip3 install -r requirements.txt`
 
 #### Printer
 
