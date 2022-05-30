@@ -46,18 +46,17 @@ will pick up the probe safely.
 
 ### Output
 
-All collected measurements and summarized data are exported as csv for your analysis.
-(You can see my printer not working too well :D)
+All graphs and data are saved to `/home/pi/probe_accuracy_tests/output`. Enable csv export with `--export-csv` flag. 
 
 Plots:
 
-![](drift.png)
-![](repeat.png)
-![](repeat1.png)
-![](corner.png)
-![](corner2.png)
+![](examples/drift.png)
+![](examples/repeat.png)
+![](examples/repeat1.png)
+![](examples/corner.png)
+![](examples/corner2.png)
 
 Terminal:
 
-![](terminal.png)
+![](examples/terminal.png)
 
