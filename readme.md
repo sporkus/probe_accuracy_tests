@@ -21,7 +21,7 @@ Example: `python3 probe_accuracy_test_suite.py --corner`
 
 On your printer:
 ```
-curl -sSL https://raw.githubusercontent.com/sporkus/probe_accuracy_tests/master/install.py | bash
+curl -sSL https://raw.githubusercontent.com/sporkus/probe_accuracy_tests/master/install.sh | bash
 ```
 
 
