@@ -387,5 +387,4 @@ if __name__ == "__main__":
     )
 
     args = vars(ap.parse_args())
-    print(args)
     main(**args)
