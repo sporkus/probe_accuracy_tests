@@ -9,18 +9,18 @@
 # * First probe measurements are dropped
 
 import argparse
-import re
-import os
 import math
+import os
+import re
+import subprocess
 import sys
 from datetime import datetime
+from typing import Dict, List, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from requests import get, post
-from typing import Tuple, List, Dict
-
 from scipy import rand
 
 MOONRAKER_URL = "http://localhost:7125"
@@ -348,7 +348,16 @@ def check_klicky_macro_issue(msgs):
         )
 
 
-class GcodeError(Exception):
+def fetch_repo():
+    script_path = os.path.realpath(__file__)
+    repo_path = os.path.dirname(script_path)
+    wd = os.getcwd()
+    print(f"Changing directory to {repo_path}")
+    os.chdir(repo_path)
+    output = subprocess.run(["git", "pull"], capture_output=True)
+    print(output.stdout.decode("utf-8"))
+    print(f"Changing directory to {wd}. Please re-run without the --update flag")
+    os.chdir(wd)
     pass
 
 
@@ -358,18 +367,21 @@ if __name__ == "__main__":
     All three tests will run at default values unless individual tests are specified"""
     )
     ap.add_argument(
+        "-c",
         "--corner",
         nargs="?",
         type=int,
         help="Enable corner test. Number of probe samples at each corner can be optionally provided. Default 30.",
     )
     ap.add_argument(
+        "-r",
         "--repeatability",
         nargs="?",
         type=int,
         help="Enable corner test. Number of probe_accuracy tests can be optionally provided. Default 20.",
     )
     ap.add_argument(
+        "-d",
         "--drift",
         nargs="?",
         type=int,
@@ -385,6 +397,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Force docking between tests. Default False",
     )
+    ap.add_argument(
+        "-u",
+        "--update",
+        action="store_true",
+        help="Updates the script with git",
+    )
 
     args = vars(ap.parse_args())
+
+    if args["update"]:
+        fetch_repo()
+        sys.exit(0)
+
     main(**args)
