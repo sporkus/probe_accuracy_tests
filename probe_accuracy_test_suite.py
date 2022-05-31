@@ -377,7 +377,7 @@ if __name__ == "__main__":
         "--repeatability",
         nargs="?",
         type=int,
-        help="Enable corner test. Number of probe_accuracy tests can be optionally provided. Default 20.",
+        help="Enable repeatability test. Number of probe_accuracy tests can be optionally provided. Default 20.",
     )
     ap.add_argument(
         "-d",
