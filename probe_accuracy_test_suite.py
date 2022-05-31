@@ -29,7 +29,7 @@ DATA_DIR = "/home/pi/probe_accuracy_tests/output"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 
 
-def main(corner, repeatability, drift, export_csv, force_dock):
+def main(corner, repeatability, drift, export_csv, force_dock, *args, **kwargs):
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
     try:
