@@ -20,6 +20,7 @@ from typing import Dict, List, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from numpy.polynomial import Polynomial
 from requests import get, post
 
 MOONRAKER_URL = "http://localhost:7125"
@@ -60,13 +61,9 @@ def test_routine(corner, repeatability, drift, export_csv, force_dock):
     if drift:
         dfs.append(test_drift(n=drift))
     df = pd.concat(dfs, axis=0, ignore_index=True).sort_index()
+    summary = summarize_results(df, echo=False)
 
-    file_nm = f"probe_accuracy_test_{RUNID}"
-    summary = df.groupby("test")["z"].agg(
-        ["min", "max", "first", "last", "mean", "std", "count"]
-    )
-    summary["range"] = summary["max"] - summary["min"]
-    summary["drift"] = summary["last"] - summary["first"]
+    file_nm = f"{RUNID}_probe_accuracy_test"
 
     if export_csv:
         df.to_csv(DATA_DIR + "/" + file_nm + ".csv", index=False)
@@ -76,25 +73,17 @@ def test_routine(corner, repeatability, drift, export_csv, force_dock):
 def test_drift(n=100):
     print(f"\nTake {n} samples in a row to check for drift")
     df = test_probe(probe_count=n, testname=f"center {n}samples")
-    summary = df.groupby("test")["z"].agg(
-        ["min", "max", "first", "last", "mean", "std", "count"]
-    )
-    summary["range"] = summary["max"] - summary["min"]
-    summary["drift"] = summary["last"] - summary["first"]
-    print(summary)
-    ax = df.plot.scatter(x="index", y="z", title=f"Drift test (n={n})")
-    ax.figure.savefig(f"{DATA_DIR}/probe_accuracy_{RUNID}_drift.png")
+    df["measurement"] = ""
+    summary = summarize_results(df)
+    plot_nm = f"{RUNID} Drift Test\n({n} samples)"
+    fig, ax = plt.subplots()
+    plot_probes(df["index"].astype(int), df["z"], "", ax)
+    fig.suptitle(plot_nm)
+    fig.tight_layout()
+    file_nm = plot_nm.split("\n")[0].lower().replace(" ", "_")
+    fig.savefig(f"{DATA_DIR}/{file_nm}.png")
+
     return df
-
-
-def random_loc(margin=50):
-    xmin, ymin, _, _ = query_printer_objects("toolhead", "axis_minimum")
-    xmax, ymax, _, _ = query_printer_objects("toolhead", "axis_maximum")
-    cfg = query_printer_objects("configfile", "config")
-
-    x = np.random.random() * (xmax - xmin - margin) + margin
-    y = np.random.random() * (ymax - ymin - margin) + margin
-    return x, y
 
 
 def test_repeatability(test_count=10, probe_count=10, force_dock=False):
@@ -105,7 +94,8 @@ def test_repeatability(test_count=10, probe_count=10, force_dock=False):
     dfs = []
     print("Test number: ", end="", flush=True)
     for i in range(test_count):
-        move_to_loc(*random_loc())
+        for _ in range(3):
+            move_to_loc(*get_random_loc())
         move_to_loc(*get_bed_center())
         send_gcode(f"M117 repeatability test {i+1}/{test_count}")
         print(f"{test_count - i}...", end="", flush=True)
@@ -117,18 +107,10 @@ def test_repeatability(test_count=10, probe_count=10, force_dock=False):
         send_gcode("DOCK_PROBE_UNLOCK")
 
     df = pd.concat(dfs, axis=0).sort_index()
-    summary = df.groupby("test")["z"].agg(
-        ["min", "max", "first", "last", "mean", "std", "count"]
-    )
-    summary["range"] = summary["max"] - summary["min"]
-    summary["drift"] = summary["last"] - summary["first"]
-    print(summary)
-    ax = df.boxplot(column="z", by="measurement", rot=45, fontsize=8)
-    plot_nm = f"probe_accuracy_{RUNID}_repeatability"
-    plt.title(plot_nm)
-    plt.suptitle("")
-    ax.figure.savefig(DATA_DIR + "/" + plot_nm + ".png")
-    plot_repeatability(df, plot_nm=f"{plot_nm}\n{probe_count} samples")
+    summary = summarize_results(df)
+    plot_nm = f"{RUNID} Repeatability Test\n({probe_count} samples)"
+    facet_plot(df, plot_nm=plot_nm)
+    plot_boxplot(df, plot_nm)
     return df
 
 
@@ -155,49 +137,76 @@ def test_corners(n=30, force_dock=False):
     if not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
     df = pd.concat(dfs, axis=0)
-    summary = df.groupby("test")["z"].agg(
-        ["min", "max", "first", "last", "mean", "std", "count"]
-    )
-    summary["range"] = summary["max"] - summary["min"]
-    summary["drift"] = summary["last"] - summary["first"]
-    print(summary)
-    ax = df.boxplot(column="z", by="measurement", rot=45, fontsize=8)
-    plot_nm = f"probe_accuracy_{RUNID}_corners"
-    plt.title(plot_nm)
-    plt.suptitle("")
-    ax.figure.savefig(DATA_DIR + "/" + plot_nm + ".png")
-    plot_repeatability(df, plot_nm=f"{plot_nm}\n{n} samples", cols=2, sharey=False)
+    summary = summarize_results(df)
+    plot_nm = f"{RUNID} Corner Test\n({n} samples)"
+    facet_plot(df, cols=2, plot_nm=plot_nm)
+    plot_boxplot(df, plot_nm)
     return df
 
 
-def plot_repeatability(df, cols=5, plot_nm=None, sharey=True):
+def summarize_results(df, echo=True):
+    df_sum = df.groupby("test")["z"].agg(
+        ["min", "max", "first", "last", "mean", "std", "count"]
+    )
+    df_sum["range"] = df_sum["max"] - df_sum["min"]
+    df_sum["drift"] = df_sum["last"] - df_sum["first"]
+
+    if echo:
+        print(df_sum)
+    return df_sum
+
+
+def facet_plot(
+    df,
+    cols=5,
+    plot_nm=None,
+):
     dfg = df.groupby("measurement")
     rows = math.ceil(dfg.ngroups / cols)
-    fig, axs = plt.subplots(rows, cols, sharex=True, sharey=sharey, figsize=(15, 10))
-    ylim = (df["z"].min() - 0.001, df["z"].max() + 0.001)
+    fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(cols * 6, rows * 5))
 
-    i, j = 0, 0
-    for test, df in dfg:
-        ax = axs[i][j] if rows > 1 else axs[j]
-        x, y = df["index"], df["z"]
-        ax.scatter(x, y)
-        ax.hlines(y.median(), x.min(), x.max())
-        if sharey:
-            ax.set_ylim(*ylim)
-        ax.set_title(test)
-        j += 1
-        if j == cols:
-            i += 1
-            j = 0
-
-    for ax in axs.flat:
-        ax.set(xlabel="probe sample", ylabel="z")
-        ax.label_outer()
+    for (measurement, df), ax in zip(dfg, axs.ravel()):
+        x, y = df["index"].astype(int), df["z"]
+        plot_probes(x, y, measurement, ax)
 
     fig.suptitle(plot_nm)
     fig.tight_layout()
-    plot_nm = plot_nm.split("\n")[0]
-    fig.savefig(f"{DATA_DIR}/{plot_nm}.png")
+    file_nm = plot_nm.split("\n")[0].lower().replace(" ", "_")
+    fig.savefig(f"{DATA_DIR}/{file_nm}.png")
+
+
+def plot_probes(x, y, measurement, ax):
+    p = Polynomial.fit(x, y, deg=2)
+    ax.plot(x, y, ".", x, p(x), "-.")
+    median = y.median()
+    range = y.max() - y.min()
+    range50 = y.quantile(0.75) - y.quantile(0.25)
+    range_flag = "!" * math.floor(range / 0.01)
+    std_flag = "!" if y.std() > 0.004 else ""
+    ylim = round(median, 3) - 0.01, round(median, 3) + 0.01
+    outofbound = sum(y < median - 0.01) + sum(y > median + 0.01)
+    ax.set(xlabel="probe sample", ylabel="z")
+    ax.set_ylim(*ylim)
+    ax.set_yticks(np.arange(ylim[0], ylim[1] + 0.002, 0.002))
+    ax.fill_between(x, y.quantile(0.75), y.quantile(0.25), color=(0, 1, 0, 0.3))
+    ax.fill_between(x, median - 0.005, color=(1, 0, 0, 0.1))
+    ax.fill_between(x, 100, median + 0.005, color=(1, 0, 0, 0.1))
+    title = f"""{measurement}
+    Mean:{y.mean():.4f}  Std:{y.std():.4f}{std_flag}
+    Median:{y.median():.4f}  Mid 50% range:{range50:.4f}
+    Range:{range:.4f}{range_flag}  Min:{y.min():.4f}  Max:{y.max():.4f}"""
+    if outofbound:
+        title += f"\n{outofbound} sample{'s are' if outofbound > 1 else ' is'} outside of median±0.01mm range"
+    ax.set_title(title, fontsize=9)
+
+
+def plot_boxplot(df, plot_nm=""):
+    ax = df.boxplot(column="z", by="measurement", rot=45, fontsize=8)
+    plt.title(plot_nm)
+    plt.suptitle("")
+    file_nm = plot_nm.split("\n")[0].lower().replace(" ", "_")
+    ax.figure.savefig(DATA_DIR + "/" + file_nm + "(box).png")
+    pass
 
 
 def send_gcode(gcode):
@@ -263,6 +272,16 @@ def get_bed_center() -> Tuple:
     x = np.mean([xmin, xmax])
     y = np.mean([ymin, ymax])
     return (x, y)
+
+
+def get_random_loc(margin=50):
+    xmin, ymin, _, _ = query_printer_objects("toolhead", "axis_minimum")
+    xmax, ymax, _, _ = query_printer_objects("toolhead", "axis_maximum")
+    cfg = query_printer_objects("configfile", "config")
+
+    x = np.random.random() * (xmax - xmin - margin) + margin
+    y = np.random.random() * (ymax - ymin - margin) + margin
+    return x, y
 
 
 def get_bed_corners() -> List:
