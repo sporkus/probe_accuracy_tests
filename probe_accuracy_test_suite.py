@@ -27,12 +27,16 @@ MOONRAKER_URL = "http://localhost:7125"
 KLIPPY_LOG = "/home/pi/klipper_logs/klippy.log"
 DATA_DIR = "/home/pi/probe_accuracy_tests/output"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
+CFG = {}
+TOOLHEAD = {}
 
 
 def main(userparams):
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
     try:
+        CFG.update(query_printer_objects("configfile", "config"))
+        TOOLHEAD.update(query_printer_objects("toolhead"))
         homing()
         level_bed()
         move_to_safe_z()
@@ -82,7 +86,7 @@ def test_drift(n=100, **kwargs):
     summary = summarize_results(df)
     plot_nm = f"{RUNID} Drift Test\n({n} samples)"
     fig, ax = plt.subplots()
-    plot_probes(df["index"].astype(int), df["z"], "", ax)
+    plot_probes(df["sample_index"].astype(int), df["z"], "", ax)
     fig.suptitle(plot_nm)
     fig.tight_layout()
     file_nm = plot_nm.split("\n")[0].lower().replace(" ", "_")
@@ -92,7 +96,7 @@ def test_drift(n=100, **kwargs):
 
 
 def test_repeatability(
-    test_count=10, probe_count=10, force_dock=False, **kwargs
+    test_count=10, probe_count=6, force_dock=False, **kwargs
 ) -> pd.DataFrame:
     if not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
@@ -117,9 +121,11 @@ def test_repeatability(
 
     df = pd.concat(dfs, axis=0).sort_index()
     summary = summarize_results(df)
+    summarize_repeatability(df)
     plot_nm = f"{RUNID} Repeatability Test\n({probe_count} samples)"
     facet_plot(df, plot_nm=plot_nm)
     plot_boxplot(df, plot_nm)
+    print("-" * 80)
     return df
 
 
@@ -151,6 +157,7 @@ def test_corners(n=30, force_dock=False, **kwargs):
     plot_nm = f"{RUNID} Corner Test\n({n} samples)"
     facet_plot(df, cols=2, plot_nm=plot_nm)
     plot_boxplot(df, plot_nm)
+    print("-" * 80)
     return df
 
 
@@ -173,10 +180,10 @@ def facet_plot(
 ):
     dfg = df.groupby("measurement")
     rows = math.ceil(dfg.ngroups / cols)
-    fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(cols * 6, rows * 5))
+    fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(cols * 6, rows * 5+3))
 
     for (measurement, df), ax in zip(dfg, axs.ravel()):
-        x, y = df["index"].astype(int), df["z"]
+        x, y = df["sample_index"].astype(int), df["z"]
         plot_probes(x, y, measurement, ax)
 
     fig.suptitle(plot_nm)
@@ -219,6 +226,33 @@ def plot_boxplot(df, plot_nm=""):
     pass
 
 
+def summarize_repeatability(df):
+    pb = CFG["probe"]
+    n = df["sample_index"].drop_duplicates().shape[0]
+    n_test = df["measurement"].drop_duplicates().shape[0]
+    # If first sample was dropped, need to shift starting index to 1
+    first_sample_dropped = 1 if (df["sample_index"].min() == 1) else 0
+    tmp = []
+    for i in range(n):
+        stats = (
+            df[df["sample_index"] <= (i + first_sample_dropped)]
+            .groupby(["measurement"])
+            .z.agg([pb["samples_result"]])
+            .agg(["mean", "min", "max", "std"])[pb["samples_result"]]
+            .to_dict()
+        )
+
+        stats.update({"range": stats["max"] - stats["min"], "sample_count": i + 1})
+        tmp.append(stats)
+
+    msg = f"\nYour probe config uses {pb['samples_result']} of {pb['samples']} sample(s) over {n_test} tests"
+    if first_sample_dropped:
+        msg += " with the first sample dropped"
+    msg += f"\nBelow is the statistics on your {pb['samples_result']} Z values, using different probe samples"
+    print(msg)
+    print(pd.DataFrame(tmp))
+
+
 def send_gcode(gcode):
     gcode = re.sub(" ", "%20", gcode)
     url = f"{MOONRAKER_URL}/printer/gcode/script?script={gcode}"
@@ -235,10 +269,8 @@ def homing() -> None:
 
 def level_bed(force=False) -> None:
     """Level bed if not done already"""
-    cfg = query_printer_objects("configfile", "config")
-
-    ztilt = cfg.get("z_tilt")
-    qgl = cfg.get("quad_gantry_level")
+    ztilt = CFG.get("z_tilt")
+    qgl = CFG.get("quad_gantry_level")
 
     if ztilt:
         gcode = "z_tilt_adjust"
@@ -276,9 +308,8 @@ def query_printer_objects(object, key=None):
 
 
 def get_bed_center() -> Tuple:
-    th = query_printer_objects("toolhead")
-    xmin, ymin, _, _ = th["axis_minimum"]
-    xmax, ymax, _, _ = th["axis_maximum"]
+    xmin, ymin, _, _ = TOOLHEAD.get("axis_minimum")
+    xmax, ymax, _, _ = TOOLHEAD.get("axis_maximum")
 
     x = np.mean([xmin, xmax])
     y = np.mean([ymin, ymax])
@@ -286,9 +317,8 @@ def get_bed_center() -> Tuple:
 
 
 def get_random_loc(n=1, margin=50):
-    th = query_printer_objects("toolhead")
-    xmin, ymin, _, _ = th["axis_minimum"]
-    xmax, ymax, _, _ = th["axis_maximum"]
+    xmin, ymin, _, _ = TOOLHEAD.get("axis_minimum")
+    xmax, ymax, _, _ = TOOLHEAD.get("axis_maximum")
 
     out = []
     for _ in range(n):
@@ -299,12 +329,11 @@ def get_random_loc(n=1, margin=50):
 
 
 def get_bed_corners() -> List:
-    cfg = query_printer_objects("configfile", "config")
-    x_offset = cfg["probe"]["x_offset"]
-    y_offset = cfg["probe"]["y_offset"]
+    x_offset = CFG["probe"]["x_offset"]
+    y_offset = CFG["probe"]["y_offset"]
 
-    xmin, ymin = re.findall(r"[\d.]+", cfg["bed_mesh"]["mesh_min"])
-    xmax, ymax = re.findall(r"[\d.]+", cfg["bed_mesh"]["mesh_max"])
+    xmin, ymin = re.findall(r"[\d.]+", CFG["bed_mesh"]["mesh_min"])
+    xmax, ymax = re.findall(r"[\d.]+", CFG["bed_mesh"]["mesh_max"])
 
     xmin = float(xmin) - float(x_offset)
     ymin = float(ymin) - float(y_offset)
@@ -361,14 +390,14 @@ def test_probe(probe_count, loc=None, testname="", keep_first=False, **kwargs):
     for i, msg in enumerate(msgs):
         coor = re.findall(r"[\d.]+", msg)
         x, y, z = [float(k) for k in coor]
-        data.append({"test": testname, "index": i, "x": x, "y": y, "z": z})
+        data.append({"test": testname, "sample_index": i, "x": x, "y": y, "z": z})
 
     if len(data) == 0:
         print("\nNo measurements collected")
         print("Exiting!")
         sys.exit(1)
 
-    if not keep_first:
+    if CFG["probe"].get("drop_first_result") == "True" and not keep_first:
         data.pop(0)
 
     return pd.DataFrame(data)
