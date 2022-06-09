@@ -29,37 +29,42 @@ DATA_DIR = "/home/pi/probe_accuracy_tests/output"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 
 
-def main(corner, repeatability, drift, export_csv, force_dock, *args, **kwargs):
+def main(userparams):
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
     try:
         homing()
         level_bed()
         move_to_safe_z()
-        if not any([corner, repeatability, drift]):
-            corner = 30
-            repeatability = 20
-            drift = 100
+
+        if not any(
+            [userparams["corner"] or userparams["repeatability"] or userparams["drift"]]
+        ):
             print("Running all tests")
-        test_routine(corner, repeatability, drift, export_csv, force_dock)
+            userparams.update({"corner": 30, "repeatability": 20, "drift": 100})
+
+        test_routine(**userparams)
     except KeyboardInterrupt:
         pass
     send_gcode("DOCK_PROBE_UNLOCK")
     move_to_loc(*get_bed_center())
 
 
-def test_routine(corner, repeatability, drift, export_csv, force_dock):
+def test_routine(corner, repeatability, drift, export_csv, force_dock, **kwargs):
     dfs = []
     if corner:
-        dfs.append(test_corners(n=corner, force_dock=force_dock))
+        dfs.append(test_corners(n=corner, force_dock=force_dock, **kwargs))
     if repeatability:
         dfs.append(
             test_repeatability(
-                test_count=repeatability, probe_count=10, force_dock=force_dock
+                test_count=repeatability,
+                probe_count=10,
+                force_dock=force_dock,
+                **kwargs,
             )
         )
     if drift:
-        dfs.append(test_drift(n=drift))
+        dfs.append(test_drift(n=drift, **kwargs))
     df = pd.concat(dfs, axis=0, ignore_index=True).sort_index()
     summary = summarize_results(df, echo=False)
 
@@ -70,9 +75,9 @@ def test_routine(corner, repeatability, drift, export_csv, force_dock):
         summary.to_csv(f"{DATA_DIR}/{file_nm}_summary.csv")
 
 
-def test_drift(n=100):
+def test_drift(n=100, **kwargs):
     print(f"\nTake {n} samples in a row to check for drift")
-    df = test_probe(probe_count=n, testname=f"center {n}samples")
+    df = test_probe(probe_count=n, testname=f"center {n}samples", **kwargs)
     df["measurement"] = ""
     summary = summarize_results(df)
     plot_nm = f"{RUNID} Drift Test\n({n} samples)"
@@ -86,7 +91,9 @@ def test_drift(n=100):
     return df
 
 
-def test_repeatability(test_count=10, probe_count=10, force_dock=False):
+def test_repeatability(
+    test_count=10, probe_count=10, force_dock=False, **kwargs
+) -> pd.DataFrame:
     if not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
 
@@ -94,12 +101,14 @@ def test_repeatability(test_count=10, probe_count=10, force_dock=False):
     dfs = []
     print("Test number: ", end="", flush=True)
     for i in range(test_count):
-        for _ in range(3):
-            move_to_loc(*get_random_loc())
+        for xy in get_random_loc(n=4):
+            move_to_loc(*xy)
         move_to_loc(*get_bed_center())
         send_gcode(f"M117 repeatability test {i+1}/{test_count}")
         print(f"{test_count - i}...", end="", flush=True)
-        df = test_probe(probe_count, testname=f"{i+1:02d}: center {probe_count}samples")
+        df = test_probe(
+            probe_count, testname=f"{i+1:02d}: center {probe_count}samples", **kwargs
+        )
         df["measurement"] = f"Test #{i+1:02d}"
         dfs.append(df)
     print("Done")
@@ -114,7 +123,7 @@ def test_repeatability(test_count=10, probe_count=10, force_dock=False):
     return df
 
 
-def test_corners(n=30, force_dock=False):
+def test_corners(n=30, force_dock=False, **kwargs):
     print(
         "\nTest probe around the bed to see if there are issues with individual drives"
     )
@@ -130,6 +139,7 @@ def test_corners(n=30, force_dock=False):
             probe_count=n,
             loc=xy,
             testname=f"{i+1}:corner {n}samples {xy_txt}",
+            **kwargs,
         )
         df["measurement"] = f"{i+1}: {xy_txt}"
         dfs.append(df)
@@ -176,7 +186,7 @@ def facet_plot(
 
 
 def plot_probes(x, y, measurement, ax):
-    p = Polynomial.fit(x, y, deg=2)
+    p = Polynomial.fit(x, y, deg=3)
     ax.plot(x, y, ".", x, p(x), "-.")
     median = y.median()
     range = y.max() - y.min()
@@ -266,22 +276,26 @@ def query_printer_objects(object, key=None):
 
 
 def get_bed_center() -> Tuple:
-    xmin, ymin, _, _ = query_printer_objects("toolhead", "axis_minimum")
-    xmax, ymax, _, _ = query_printer_objects("toolhead", "axis_maximum")
+    th = query_printer_objects("toolhead")
+    xmin, ymin, _, _ = th["axis_minimum"]
+    xmax, ymax, _, _ = th["axis_maximum"]
 
     x = np.mean([xmin, xmax])
     y = np.mean([ymin, ymax])
     return (x, y)
 
 
-def get_random_loc(margin=50):
-    xmin, ymin, _, _ = query_printer_objects("toolhead", "axis_minimum")
-    xmax, ymax, _, _ = query_printer_objects("toolhead", "axis_maximum")
-    cfg = query_printer_objects("configfile", "config")
+def get_random_loc(n=1, margin=50):
+    th = query_printer_objects("toolhead")
+    xmin, ymin, _, _ = th["axis_minimum"]
+    xmax, ymax, _, _ = th["axis_maximum"]
 
-    x = np.random.random() * (xmax - xmin - margin) + margin
-    y = np.random.random() * (ymax - ymin - margin) + margin
-    return x, y
+    out = []
+    for _ in range(n):
+        x = np.random.random() * (xmax - xmin - margin) + margin
+        y = np.random.random() * (ymax - ymin - margin) + margin
+        out.append((x, y))
+    return out
 
 
 def get_bed_corners() -> List:
@@ -315,10 +329,22 @@ def get_gcode_response(count=1000):
     return gcode_resp
 
 
-def collect_data(probe_count, discard_first_sample=True, test=None):
+def test_probe(probe_count, loc=None, testname="", keep_first=False, **kwargs):
     "Send probe_accuracy command, and retrieve data from gcod respond cache"
+    # breakpoint()
+    if loc:
+        move_to_loc(*loc)
+    else:
+        move_to_loc(*get_bed_center())
+
     start_time = get_gcode_response(count=1)[0]["time"]
-    send_gcode(f"PROBE_ACCURACY SAMPLES={probe_count}")
+
+    gcode_cmd = f"PROBE_ACCURACY SAMPLES={probe_count}"
+    if kwargs.get("retract"):
+        gcode_cmd += f' SAMPLE_RETRACT_DIST={kwargs["retract"]}'
+    if kwargs.get("speed"):
+        gcode_cmd += f' SPEED={kwargs["speed"]}'
+    send_gcode(gcode_cmd)
     raw = get_gcode_response(count=1000)
     gcode_resp = [x for x in raw if x["time"] > start_time]
 
@@ -335,26 +361,17 @@ def collect_data(probe_count, discard_first_sample=True, test=None):
     for i, msg in enumerate(msgs):
         coor = re.findall(r"[\d.]+", msg)
         x, y, z = [float(k) for k in coor]
-        data.append({"test": test, "index": i, "x": x, "y": y, "z": z})
+        data.append({"test": testname, "index": i, "x": x, "y": y, "z": z})
 
     if len(data) == 0:
         print("\nNo measurements collected")
         print("Exiting!")
         sys.exit(1)
 
-    if discard_first_sample:
+    if not keep_first:
         data.pop(0)
-    return data
 
-
-def test_probe(probe_count, loc=None, testname=""):
-    if loc:
-        move_to_loc(*loc)
-    else:
-        move_to_loc(*get_bed_center())
-
-    df = pd.DataFrame(collect_data(probe_count, test=testname))
-    return df
+    return pd.DataFrame(data)
 
 
 def check_klicky_macro_issue(msgs):
@@ -416,6 +433,24 @@ if __name__ == "__main__":
         help="Force docking between tests. Default False",
     )
     ap.add_argument(
+        "--keep_first",
+        action="store_true",
+        help="Keep first probe measurement",
+    )
+    ap.add_argument(
+        "-s",
+        "--speed",
+        nargs="?",
+        type=float,
+        help="probe speed",
+    )
+    ap.add_argument(
+        "--retract",
+        nargs="?",
+        type=float,
+        help="probe sample retract distance",
+    )
+    ap.add_argument(
         "-u",
         "--update",
         action="store_true",
@@ -428,4 +463,4 @@ if __name__ == "__main__":
         fetch_repo()
         sys.exit(0)
 
-    main(**args)
+    main(args)
