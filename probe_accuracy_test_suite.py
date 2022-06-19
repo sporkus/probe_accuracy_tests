@@ -283,6 +283,7 @@ def level_bed(force=False) -> None:
             "User has no leveling gcode. Please check printer.cfg [z_tilt] or [quad_gantry_level]"
         )
         print("Skip leveling...")
+        return
 
     if (not leveled) or force:
         print("Leveling")
@@ -427,7 +428,7 @@ def fetch_repo():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
-        description="""Automated probe testing. 
+        description="""Automated probe testing.
     All three tests will run at default values unless individual tests are specified"""
     )
     ap.add_argument(
