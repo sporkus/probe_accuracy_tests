@@ -372,7 +372,7 @@ def test_probe(probe_count, loc=None, testname="", keep_first=False, **kwargs):
     if kwargs.get("retract"):
         gcode_cmd += f' SAMPLE_RETRACT_DIST={kwargs["retract"]}'
     if kwargs.get("speed"):
-        gcode_cmd += f' SPEED={kwargs["speed"]}'
+        gcode_cmd += f' PROBE_SPEED={kwargs["speed"]}'
     send_gcode(gcode_cmd)
     raw = get_gcode_response(count=1000)
     gcode_resp = [x for x in raw if x["time"] > start_time]
