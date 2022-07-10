@@ -323,8 +323,8 @@ def get_random_loc(n=1, margin=50):
 
     out = []
     for _ in range(n):
-        x = np.random.random() * (xmax - xmin - margin) + margin
-        y = np.random.random() * (ymax - ymin - margin) + margin
+        x = np.random.random() * (xmax - xmin - 2 * margin) + margin + xmin
+        y = np.random.random() * (ymax - ymin - 2 * margin) + margin + ymin
         out.append((x, y))
     return out
 
