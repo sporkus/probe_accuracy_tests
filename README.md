@@ -81,6 +81,7 @@ Terminal:
 
 
 ### Common Issues
-* On voron V2 printers, the most common issue is loose z-belts. 
-
+* On voron V2 printers, the most common issue is loose z-belts. An example from a printer with loose belt: 
+    ![](examples/loose_belts.png)
+* Getting probe sample exceeding samples_tolerance error: increase `[probe]:sample_tolerance` to 0.02. This has no effect on the actual accuracy of your probe.
 
