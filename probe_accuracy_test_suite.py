@@ -436,6 +436,7 @@ if __name__ == "__main__":
         "--corner",
         nargs="?",
         type=int,
+        const=30,
         help="Enable corner test. Number of probe samples at each corner can be optionally provided. Default 30.",
     )
     ap.add_argument(
@@ -443,6 +444,7 @@ if __name__ == "__main__":
         "--repeatability",
         nargs="?",
         type=int,
+        const=20,
         help="Enable repeatability test. Number of probe_accuracy tests can be optionally provided. Default 20.",
     )
     ap.add_argument(
@@ -450,6 +452,7 @@ if __name__ == "__main__":
         "--drift",
         nargs="?",
         type=int,
+        const=100,
         help="Enable drift test. Number of probe_accuracy samples can be optionally provided. Default 100.",
     )
     ap.add_argument(
