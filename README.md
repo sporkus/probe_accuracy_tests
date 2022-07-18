@@ -35,6 +35,7 @@ Use `python3 $HOME/probe_accuracy_test_suite.py -h` to see all the options
     * 50 probe samples drift test: `--drift 50`
 
 #### Other options
+* add `--speedtest` to test a range of z-probe speed. Speed parameters are entered in interactive menu. 
 * add `--force_dock` to force probe docking between tests to check docking issues
 * add `--export_csv` to export data as csv 
 * add `--speed`/`-retract` for probe speed/retract distance override

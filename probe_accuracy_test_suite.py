@@ -42,7 +42,7 @@ def main(userparams):
         move_to_safe_z()
 
         if not any(
-            [userparams["corner"] or userparams["repeatability"] or userparams["drift"]]
+            [userparams["corner"] or userparams["repeatability"] or userparams["drift"] or userparams["speedtest"]]
         ):
             print("Running all tests")
             userparams.update({"corner": 30, "repeatability": 20, "drift": 100})
@@ -69,6 +69,8 @@ def test_routine(corner, repeatability, drift, export_csv, force_dock, **kwargs)
         )
     if drift:
         dfs.append(test_drift(n=drift, **kwargs))
+    if kwargs['speedtest']:
+        dfs.append(test_speed())
     df = pd.concat(dfs, axis=0, ignore_index=True).sort_index()
     summary = summarize_results(df, echo=False)
 
@@ -108,7 +110,7 @@ def test_repeatability(
         for xy in get_random_loc(n=4):
             move_to_loc(*xy)
         move_to_loc(*get_bed_center())
-        send_gcode(f"M117 repeatability test {i+1}/{test_count}")
+        send_gcode(f"M117 {i+1}/{test_count} repeatability")
         print(f"{test_count - i}...", end="", flush=True)
         df = test_probe(
             probe_count, testname=f"{i+1:02d}: center {probe_count}samples", **kwargs
@@ -159,6 +161,64 @@ def test_corners(n=30, force_dock=False, **kwargs):
     plot_boxplot(df, plot_nm)
     print("-" * 80)
     return df
+
+
+def test_speed(force_dock=False, **kwargs):
+    print(
+        "\nTest a range of z-probe speed"
+    )
+    try:
+        speedrange = {
+            'start': float(input("\nMinimum speed?  ")),
+            'stop': float(input("Maximum speed?  ")),
+            'step': float(input("Steps between speeds?  ")),
+        }
+        speedcheck(speedrange)
+        speeds = list(np.arange(**speedrange))
+        speeds.append(speedrange['stop'])
+    except Exception as e:
+        print("Invalid user input. Exiting...")
+        print(e)
+        sys.exit(0)
+    
+    level_bed()
+    if not force_dock:
+        send_gcode("ATTACH_PROBE_LOCK")
+    dfs = []
+    for spd in speeds:
+        send_gcode(f"M117 {spd}mm/s probe speed")
+        print(f"{spd}mm/s...", end="", flush=True)
+        df = test_probe(
+            probe_count=10, testname=spd, speed=spd 
+        )
+        df["measurement"] = f"Speed {spd: 2.1f}"
+        dfs.append(df)
+    print("Done")
+
+    if not force_dock:
+        send_gcode("DOCK_PROBE_UNLOCK")
+    df = pd.concat(dfs, axis=0)
+    summary = summarize_results(df)
+    plot_nm = f"{RUNID} Speed Test)"
+    facet_plot(df, cols=5, plot_nm=plot_nm)
+    plot_boxplot(df, plot_nm)
+    print("-" * 80)
+    return df
+
+
+def speedcheck(speeds):
+    assert speeds['step'] > 0
+    assert speeds['start'] >= 1
+    assert speeds['stop'] >= speeds['start']
+
+    if speeds['stop'] >= 35:
+        print(f"Warning: your maxmimum speeds will be {speeds['stop']}")
+        confirm = None 
+        while not (confirm == 'y' or confirm == 'n'):
+            confirm = input("confirm? (y/n) ") 
+        
+        if confirm == 'n':
+            assert False 
 
 
 def summarize_results(df, echo=True):
@@ -454,6 +514,11 @@ if __name__ == "__main__":
         type=int,
         const=100,
         help="Enable drift test. Number of probe_accuracy samples can be optionally provided. Default 100.",
+    )
+    ap.add_argument(
+        "--speedtest",
+        action='store_true',
+        help="Enable probe speed test. Requires user input for speed parameters.",
     )
     ap.add_argument(
         "--export_csv",
