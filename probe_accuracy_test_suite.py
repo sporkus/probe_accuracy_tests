@@ -42,7 +42,12 @@ def main(userparams):
         move_to_safe_z()
 
         if not any(
-            [userparams["corner"] or userparams["repeatability"] or userparams["drift"] or userparams["speedtest"]]
+            [
+                userparams["corner"]
+                or userparams["repeatability"]
+                or userparams["drift"]
+                or userparams["speedtest"]
+            ]
         ):
             print("Running all tests")
             userparams.update({"corner": 30, "repeatability": 20, "drift": 100})
@@ -69,7 +74,7 @@ def test_routine(corner, repeatability, drift, export_csv, force_dock, **kwargs)
         )
     if drift:
         dfs.append(test_drift(n=drift, **kwargs))
-    if kwargs['speedtest']:
+    if kwargs["speedtest"]:
         dfs.append(test_speed())
     df = pd.concat(dfs, axis=0, ignore_index=True).sort_index()
     summary = summarize_results(df, echo=False)
@@ -164,23 +169,21 @@ def test_corners(n=30, force_dock=False, **kwargs):
 
 
 def test_speed(force_dock=False, **kwargs):
-    print(
-        "\nTest a range of z-probe speed"
-    )
+    print("\nTest a range of z-probe speed")
     try:
         speedrange = {
-            'start': float(input("\nMinimum speed?  ")),
-            'stop': float(input("Maximum speed?  ")),
-            'step': float(input("Steps between speeds?  ")),
+            "start": float(input("\nMinimum speed?  ")),
+            "stop": float(input("Maximum speed?  ")),
+            "step": float(input("Steps between speeds?  ")),
         }
         speedcheck(speedrange)
         speeds = list(np.arange(**speedrange))
-        speeds.append(speedrange['stop'])
+        speeds.append(speedrange["stop"])
     except Exception as e:
         print("Invalid user input. Exiting...")
         print(e)
         sys.exit(0)
-    
+
     level_bed()
     if not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
@@ -188,9 +191,7 @@ def test_speed(force_dock=False, **kwargs):
     for spd in speeds:
         send_gcode(f"M117 {spd}mm/s probe speed")
         print(f"{spd}mm/s...", end="", flush=True)
-        df = test_probe(
-            probe_count=10, testname=spd, speed=spd 
-        )
+        df = test_probe(probe_count=10, testname=spd, speed=spd)
         df["measurement"] = f"Speed {spd: 2.1f}"
         dfs.append(df)
     print("Done")
@@ -207,18 +208,18 @@ def test_speed(force_dock=False, **kwargs):
 
 
 def speedcheck(speeds):
-    assert speeds['step'] > 0
-    assert speeds['start'] >= 1
-    assert speeds['stop'] >= speeds['start']
+    assert speeds["step"] > 0
+    assert speeds["start"] >= 1
+    assert speeds["stop"] >= speeds["start"]
 
-    if speeds['stop'] >= 35:
+    if speeds["stop"] >= 35:
         print(f"Warning: your maxmimum speeds will be {speeds['stop']}")
-        confirm = None 
-        while not (confirm == 'y' or confirm == 'n'):
-            confirm = input("confirm? (y/n) ") 
-        
-        if confirm == 'n':
-            assert False 
+        confirm = None
+        while not (confirm == "y" or confirm == "n"):
+            confirm = input("confirm? (y/n) ")
+
+        if confirm == "n":
+            assert False
 
 
 def summarize_results(df, echo=True):
@@ -240,7 +241,7 @@ def facet_plot(
 ):
     dfg = df.groupby("measurement")
     rows = math.ceil(dfg.ngroups / cols)
-    fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(cols * 6, rows * 5+3))
+    fig, axs = plt.subplots(rows, cols, sharex=True, figsize=(cols * 6, rows * 5 + 3))
 
     for (measurement, df), ax in zip(dfg, axs.ravel()):
         x, y = df["sample_index"].astype(int), df["z"]
@@ -287,7 +288,9 @@ def plot_boxplot(df, plot_nm=""):
 
 
 def summarize_repeatability(df):
-    pb = CFG["probe"]
+    probe_config = CFG["probe"]
+    agg_method = probe_config.get("samples_result")
+    agg_method = "mean" if agg_method != "median" else "median"
     n = df["sample_index"].drop_duplicates().shape[0]
     n_test = df["measurement"].drop_duplicates().shape[0]
     # If first sample was dropped, need to shift starting index to 1
@@ -297,18 +300,18 @@ def summarize_repeatability(df):
         stats = (
             df[df["sample_index"] <= (i + first_sample_dropped)]
             .groupby(["measurement"])
-            .z.agg([pb["samples_result"]])
-            .agg(["mean", "min", "max", "std"])[pb["samples_result"]]
+            .z.agg(agg_method)
+            .agg(["mean", "min", "max", "std"])
             .to_dict()
         )
 
         stats.update({"range": stats["max"] - stats["min"], "sample_count": i + 1})
         tmp.append(stats)
 
-    msg = f"\nYour probe config uses {pb['samples_result']} of {pb['samples']} sample(s) over {n_test} tests"
+    msg = f"\nYour probe config uses {agg_method} of {probe_config['samples']} sample(s) over {n_test} tests"
     if first_sample_dropped:
         msg += " with the first sample dropped"
-    msg += f"\nBelow is the statistics on your {pb['samples_result']} Z values, using different probe samples"
+    msg += f"\nBelow is the statistics on your {agg_method} Z values, using different probe samples"
     print(msg)
     print(pd.DataFrame(tmp))
 
@@ -521,7 +524,7 @@ if __name__ == "__main__":
     )
     ap.add_argument(
         "--speedtest",
-        action='store_true',
+        action="store_true",
         help="Enable probe speed test. Requires user input for speed parameters.",
     )
     ap.add_argument(
