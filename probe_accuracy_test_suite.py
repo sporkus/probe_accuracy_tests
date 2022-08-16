@@ -362,10 +362,14 @@ def move_to_safe_z():
 def query_printer_objects(object, key=None):
     url = f"{MOONRAKER_URL}/printer/objects/query?{object}"
     resp = get(url).json()
-    obj = resp["result"]["status"][object]
-    if key:
-        obj = obj[key]
-    return obj
+    try:
+        obj = resp["result"]["status"][object]
+        if key:
+            obj = obj[key]
+        return obj
+    except:
+        print(f"Warning: {object}.{key} is not configured")
+        return None
 
 
 def get_bed_center() -> Tuple:
