@@ -24,8 +24,8 @@ from numpy.polynomial import Polynomial
 from requests import get, post
 
 MOONRAKER_URL = "http://localhost:7125"
-KLIPPY_LOG = "$HOME/klipper_logs/klippy.log"
-DATA_DIR = "$HOME/probe_accuracy_tests/output"
+KLIPPY_LOG = f"{os.environ.get('HOME')}/klipper_logs/klippy.log"
+DATA_DIR = f"{os.environ.get('HOME')}/probe_accuracy_tests/output"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 CFG = {}
 TOOLHEAD = {}
