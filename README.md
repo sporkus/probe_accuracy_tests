@@ -23,9 +23,8 @@ will clone/pull this repo and install the uncessary python packages.
 
 ### How to 
 
-Use `python3 $HOME/probe_accuracy_test_suite.py -h` to see all the options
+Use `python3 $HOME/probe_accuracy_tests/probe_accuracy_test_suite.py --help` to see all the options
 
-* See all options `python3 $HOME/probe_accuracy_test_suite.py --help`
 #### Tests
 * Run all three tests: `python3 $HOME/probe_accuracy_test_suite.py` 
 * Enable tests individually with `--corner`/`-c`, `--repeatability`/`-r`, `--drift`/`-d`
