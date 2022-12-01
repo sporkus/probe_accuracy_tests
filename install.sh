@@ -7,7 +7,7 @@ cd "${HOME}" || exit
 cd "${REPO}"; git pull
 
 # Install pip if it doesn't exist 
-[ -x "$(command -v pip3)" ] || sudo apt install python3-pip
+[ -x "$(command -v pip3)" ] || sudo apt install python3-pip libatlas3-base
 
 echo "Installing python packages"
 pip3 install -r requirements.txt --upgrade
