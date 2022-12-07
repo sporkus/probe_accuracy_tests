@@ -59,7 +59,7 @@ will pick up the probe safely.
 
 ### Output
 
-All graphs and data are saved to `$HOME/probe_accuracy_tests/output`. Enable csv export with `--export-csv` flag. 
+All graphs and data are saved to `$HOME/probe_accuracy_tests/output`. Enable csv export with `--export_csv` flag. 
 
 Plot examples:
 
