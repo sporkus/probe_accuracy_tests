@@ -29,6 +29,8 @@ DATA_DIR = f"{os.environ.get('HOME')}/probe_accuracy_tests/output"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 CFG = {}
 TOOLHEAD = {}
+isKlicky = False
+isTap = False
 
 
 def main(userparams):
@@ -37,6 +39,7 @@ def main(userparams):
     try:
         CFG.update(query_printer_objects("configfile", "config"))
         TOOLHEAD.update(query_printer_objects("toolhead"))
+        detect_probe()
         homing()
         level_bed()
         move_to_safe_z()
@@ -55,7 +58,8 @@ def main(userparams):
         test_routine(**userparams)
     except KeyboardInterrupt:
         pass
-    send_gcode("DOCK_PROBE_UNLOCK")
+    if isKlicky:
+        send_gcode("DOCK_PROBE_UNLOCK")
     move_to_loc(*get_bed_center())
 
 
@@ -105,7 +109,7 @@ def test_drift(n=100, **kwargs):
 def test_repeatability(
     test_count=10, probe_count=6, force_dock=False, **kwargs
 ) -> pd.DataFrame:
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
 
     print(f"\nTake {test_count} probe_accuracy tests to check for repeatability")
@@ -123,7 +127,7 @@ def test_repeatability(
         df["measurement"] = f"Test #{i+1:02d}"
         dfs.append(df)
     print("Done")
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
 
     df = pd.concat(dfs, axis=0).sort_index()
@@ -141,7 +145,7 @@ def test_corners(n=30, force_dock=False, **kwargs):
         "\nTest probe around the bed to see if there are issues with individual drives"
     )
     level_bed(force=True)
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
     dfs = []
     for i, xy in enumerate(get_bed_corners()):
@@ -157,7 +161,7 @@ def test_corners(n=30, force_dock=False, **kwargs):
         df["measurement"] = f"{i+1}: {xy_txt}"
         dfs.append(df)
     print("Done")
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
     df = pd.concat(dfs, axis=0)
     summary = summarize_results(df)
@@ -185,7 +189,7 @@ def test_speed(force_dock=False, **kwargs):
         sys.exit(0)
 
     level_bed()
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
     dfs = []
     for spd in speeds:
@@ -196,7 +200,7 @@ def test_speed(force_dock=False, **kwargs):
         dfs.append(df)
     print("Done")
 
-    if not force_dock:
+    if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
     df = pd.concat(dfs, axis=0)
     summary = summarize_results(df)
@@ -354,11 +358,19 @@ def level_bed(force=False) -> None:
 
 
 def move_to_safe_z():
-    safe_z = query_printer_objects("gcode_macro _User_Variables", "safe_z")
+    safe_z = None
+
+    if isKlicky:
+        safe_z = query_printer_objects("gcode_macro _User_Variables", "safe_z")
+    elif isTap:
+        settings = query_printer_objects("configfile", "settings")
+        safe_z = settings["safe_z_home"]["z_hop"]
+
     if not safe_z:
-        print("Safe z has not been set in klicky-variables")
+        print("Safe z has not been set in klicky-variables or in [safe_z_home]")
         safe_z = input("Enter safe z height to avoid crash:")
 
+    
     send_gcode(f"G1 Z{safe_z}")
 
 
@@ -492,6 +504,22 @@ def fetch_repo():
     os.chdir(wd)
     pass
 
+
+def detect_probe():
+    settings = query_printer_objects("configfile", "settings")
+    user_variables = query_printer_objects("gcode_macro _User_Variables")
+
+    try:
+        if user_variables["dockarmslenght"]:
+            global isKlicky
+            isKlicky = True
+    except:
+        True
+
+    endstop_pin = CFG["stepper_z"]["endstop_pin"]
+    if endstop_pin == "probe:z_virtual_endstop":
+        global isTap
+        isTap = True
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
