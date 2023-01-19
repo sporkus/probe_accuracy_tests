@@ -364,7 +364,8 @@ def move_to_safe_z():
         safe_z = query_printer_objects("gcode_macro _User_Variables", "safe_z")
     elif isTap:
         settings = query_printer_objects("configfile", "settings")
-        safe_z = settings["safe_z_home"]["z_hop"]
+        if "safe_z_home" in settings:
+            safe_z = settings["safe_z_home"]["z_hop"]
 
     if not safe_z:
         print("Safe z has not been set in klicky-variables or in [safe_z_home]")
