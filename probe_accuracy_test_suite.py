@@ -511,7 +511,7 @@ def detect_probe():
     user_variables = query_printer_objects("gcode_macro _User_Variables")
 
     try:
-        if user_variables["dockarmslenght"]:
+        if user_variables["docklocation_x"]:
             global isKlicky
             isKlicky = True
     except:
