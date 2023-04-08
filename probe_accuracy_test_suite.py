@@ -51,6 +51,7 @@ CFG = {}
 TOOLHEAD = {}
 isKlicky = False
 isTap = False
+safe_z = None
 
 
 def main(userparams):
@@ -378,7 +379,7 @@ def level_bed(force=False) -> None:
 
 
 def move_to_safe_z():
-    safe_z = None
+    global safe_z
 
     if isKlicky:
         safe_z = query_printer_objects("gcode_macro _User_Variables", "safe_z")
@@ -445,6 +446,7 @@ def get_bed_corners() -> List:
 
 
 def move_to_loc(x, y, echo=False):
+    move_to_safe_z()
     gcode = f"G0 X{x} Y{y} F99999"
     if echo:
         print(gcode)
