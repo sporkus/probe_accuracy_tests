@@ -50,6 +50,7 @@ RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 CFG = {}
 TOOLHEAD = {}
 isKlicky = False
+isKlippain = False
 isTap = False
 safe_z = None
 
@@ -57,31 +58,42 @@ safe_z = None
 def main(userparams):
     if not os.path.exists(DATA_DIR):
         os.mkdir(DATA_DIR)
-    try:
+    
+    if userparams["detect_probe"]:
         CFG.update(query_printer_objects("configfile", "config"))
         TOOLHEAD.update(query_printer_objects("toolhead"))
+    
         detect_probe()
-        homing()
-        level_bed()
-        move_to_safe_z()
+    else:
+        try:
+            CFG.update(query_printer_objects("configfile", "config"))
+            TOOLHEAD.update(query_printer_objects("toolhead"))
+            detect_probe()
+            
+            homing()
+            move_to_safe_z()
 
-        if not any(
-            [
-                userparams["corner"]
-                or userparams["repeatability"]
-                or userparams["drift"]
-                or userparams["speedtest"]
-            ]
-        ):
-            print("Running all tests")
-            userparams.update({"corner": 30, "repeatability": 20, "drift": 100})
+            if not any(
+                [
+                    userparams["corner"]
+                    or userparams["repeatability"]
+                    or userparams["drift"]
+                    or userparams["speedtest"]
+                ]
+            ):
+                print("Running all tests")
+                userparams.update({"corner": 30, "repeatability": 20, "drift": 100})
 
-        test_routine(**userparams)
-    except KeyboardInterrupt:
-        pass
-    if isKlicky:
-        send_gcode("DOCK_PROBE_UNLOCK")
-    move_to_loc(*get_bed_center())
+            test_routine(**userparams)
+        except KeyboardInterrupt:
+            pass
+        if isKlicky:
+            send_gcode("DOCK_PROBE_UNLOCK")
+            
+        if isKlippain:
+            send_gcode("DEACTIVATE_PROBE")
+            
+        move_to_loc(*get_bed_center())
 
 
 def test_routine(corner, repeatability, drift, export_csv, force_dock, **kwargs):
@@ -132,6 +144,9 @@ def test_repeatability(
 ) -> pd.DataFrame:
     if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
+        
+    if isKlippain and not force_dock:
+        send_gcode("ACTIVATE_PROBE LOCK=true")
 
     print(f"\nTake {test_count} probe_accuracy tests to check for repeatability")
     dfs = []
@@ -151,6 +166,9 @@ def test_repeatability(
     if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
 
+    if isKlippain and not force_dock:
+        send_gcode("DEACTIVATE_PROBE UNLOCK=true")        
+
     df = pd.concat(dfs, axis=0).sort_index()
     summary = summarize_results(df)
     summarize_repeatability(df)
@@ -168,6 +186,10 @@ def test_corners(n=30, force_dock=False, **kwargs):
     level_bed(force=True)
     if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
+
+    if isKlippain and not force_dock:
+        send_gcode("ACTIVATE_PROBE LOCK=true")        
+        
     dfs = []
     for i, xy in enumerate(get_bed_corners()):
         xy_txt = f"({xy[0]:.0f}, {xy[1]:.0f})"
@@ -184,6 +206,10 @@ def test_corners(n=30, force_dock=False, **kwargs):
     print("Done")
     if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
+
+    if isKlippain and not force_dock:
+        send_gcode("DEACTIVATE_PROBE UNLOCK=true")        
+        
     df = pd.concat(dfs, axis=0)
     summary = summarize_results(df)
     plot_nm = f"{RUNID} Corner Test\n({n} samples)"
@@ -212,6 +238,10 @@ def test_speed(force_dock=False, **kwargs):
     level_bed()
     if isKlicky and not force_dock:
         send_gcode("ATTACH_PROBE_LOCK")
+
+    if isKlippain and not force_dock:
+        send_gcode("ACTIVATE_PROBE LOCK=true")        
+
     dfs = []
     for spd in speeds:
         send_gcode(f"M117 {spd}mm/s probe speed")
@@ -223,6 +253,10 @@ def test_speed(force_dock=False, **kwargs):
 
     if isKlicky and not force_dock:
         send_gcode("DOCK_PROBE_UNLOCK")
+
+    if isKlippain and not force_dock:
+        send_gcode("DEACTIVATE_PROBE UNLOCK=true")        
+
     df = pd.concat(dfs, axis=0)
     summary = summarize_results(df)
     plot_nm = f"{RUNID} Speed Test)"
@@ -383,6 +417,8 @@ def move_to_safe_z():
 
     if isKlicky:
         safe_z = query_printer_objects("gcode_macro _User_Variables", "safe_z")
+    if isKlippain:
+        safe_z = query_printer_objects("gcode_macro _USER_VARIABLES", "probe_min_z_travel")
     elif isTap:
         settings = query_printer_objects("configfile", "settings")
         if "safe_z_home" in settings:
@@ -530,19 +566,33 @@ def fetch_repo():
 
 def detect_probe():
     settings = query_printer_objects("configfile", "settings")
-    user_variables = query_printer_objects("gcode_macro _User_Variables")
 
     try:
         if user_variables["docklocation_x"]:
             global isKlicky
             isKlicky = True
+            print("\n\nKlicky mode detected" )
+           
     except:
         True
+
+    user_variables = query_printer_objects("gcode_macro _USER_VARIABLES")
+        
+    try:
+        if user_variables["probe_type_enabled"]:
+            if user_variables["probe_type_enabled"] == "dockable":
+                global isKlippain
+                isKlippain = True
+                print("\n\nKlippain mode detected" )
+            
+    except:
+        True   
 
     endstop_pin = CFG["stepper_z"]["endstop_pin"]
     if endstop_pin == "probe:z_virtual_endstop":
         global isTap
         isTap = True
+        print("\n\nTap mode detected" )
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
@@ -612,7 +662,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Updates the script with git",
     )
-
+    ap.add_argument(
+        "-t",
+        "--detect_probe",
+        help="Simple test probe mode",
+    )
     args = vars(ap.parse_args())
 
     if args["update"]:
