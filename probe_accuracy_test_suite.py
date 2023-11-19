@@ -370,16 +370,16 @@ class Test_suite():
         if self.speedtest:
             self.test_speedtest()
 
-        suitframe = pandas.concat(
+        suiteframe = pandas.concat(
             self.testframes,
             axis = 0,
             ignore_index = True
         ).sort_index()
-        summary = summarize_results(suitframe, echo = False)
+        summary = self._summarize_results(suiteframe, echo = False)
 
         file_nm = f"{ RUNID }_probe_accuracy_test"
-        if export_csv:
-            suitframe.to_csv(
+        if self.export_csv:
+            suiteframe.to_csv(
                 f"{ self.output_dir }/{ file_nm }.csv",
                 index = False
             )
