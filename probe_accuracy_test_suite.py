@@ -7,12 +7,12 @@
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
 # of the License, or (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
@@ -100,7 +100,7 @@ class Probe():
         print("Unknown probe error.")
         print("Exiting!")
         sys.exit(1)
-    
+
     def _detect(self):
         print("Probe type: ..." )
 
@@ -179,7 +179,7 @@ class Printer:
     def gcode(self, gcode):
         """Send gcode to printer"""
         self.post("/printer/gcode/script", { "script": gcode })
-    
+
     def conditional_home(self):
         """Home if not done already"""
         homed_axes = self.query("toolhead", "homed_axes")
@@ -238,7 +238,7 @@ class Printer:
         self.gcode("G28")
 
     def _move(
-        self, 
+        self,
         x = None,
         y = None,
         z = None,
@@ -748,13 +748,23 @@ class Test_suite():
             Median:{y.median():.4f}  Mid 50% range:{range50:.4f}
             Range:{range:.4f}{range_flag}  Min:{y.min():.4f}  Max:{y.max():.4f}
         """
-    
+
         outofbound = sum(y < median - 0.01) + sum(y > median + 0.01)
         if outofbound:
             title += " ".join([
                 f"\n{outofbound} sample{'s are' if outofbound > 1 else ' is'}",
                 "outside of median±0.01mm range"
             ])
+
+        try:
+            x = x.to_numpy()
+        except:
+            pass
+
+        try:
+            y = y.to_numpy()
+        except:
+            pass
 
         ax.plot(x, y, ".", x, polynom(x), "-.")
         ax.set(xlabel = "probe sample", ylabel = "z")
@@ -791,7 +801,7 @@ def main(userparams):
         print("ERROR: No probe could be found.", file = sys.stderr)
         sys.exit(1)
     elif not userparams["detect_probe"]:
-        try:            
+        try:
             printer.conditional_home()
             printer.move_center()
 
