@@ -109,7 +109,7 @@ class Probe():
             if user_variables["docklocation_x"]:
                 self.isKlicky = True
                 print(f"{ CLEAR_LINE }Probe type: Klicky mode detected")
-                returnp
+                return
         except:
             pass
 
