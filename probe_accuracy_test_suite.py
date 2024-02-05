@@ -897,7 +897,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "-o",
         "--output_dir",
-        nargs = 1,
+        type = str,
         help = "Output folder for testresults",
     )
     ap.add_argument(
