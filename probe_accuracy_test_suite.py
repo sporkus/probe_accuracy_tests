@@ -922,6 +922,6 @@ if __name__ == "__main__":
     if not args["output_dir"]:
         args["output_dir"] = DATA_DIR
     else:
-        args["output_dir"] = str(args["output_dir"][0]).rstrip("/")
+        args["output_dir"] = str(args["output_dir"]).rstrip("/")
     
     main(args)
