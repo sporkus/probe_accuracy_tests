@@ -395,6 +395,10 @@ class Test_suite():
             "with individual drives"
         )
 
+        if self.corner < 10:
+            print(f"The minimum corner count is 10, updating test count from {self.corner} to 10")
+            self.corner = 10
+
         self.printer.level_bed(force = True)
         if not self.force_dock:
             self.printer.probe.lock(lock = True)
@@ -582,9 +586,6 @@ class Test_suite():
             self.printer.move(*loc)
         else:
             self.printer.move_center()
-
-        if probe_count < 10:
-            probe_count = 10
 
         start_time = self.printer.get_gcode_store(count = 1)[0]["time"]
 
@@ -782,8 +783,8 @@ class Test_suite():
 
 
 def main(userparams):
-    if not os.path.exists(DATA_DIR):
-        os.mkdir(DATA_DIR)
+    if not os.path.exists(userparams['output_dir']):
+        os.makedirs(userparams['output_dir'], exist_ok=True)
 
     printer = Printer(MOONRAKER_URL)
 
@@ -920,5 +921,7 @@ if __name__ == "__main__":
 
     if not args["output_dir"]:
         args["output_dir"] = DATA_DIR
-
+    else:
+        args["output_dir"] = str(args["output_dir"][0]).rstrip("/")
+    
     main(args)
