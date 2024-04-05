@@ -246,13 +246,13 @@ class Printer:
         echo = False
     ):
         gcode_cmd = "G0"
-        if x:
+        if x != None:
             gcode_cmd += f" X{ x }"
-        if y:
+        if y != None:
             gcode_cmd += f" Y{ y }"
-        if z:
+        if z != None:
             gcode_cmd += f" Z{ z }"
-        if feedrate:
+        if feedrate != None:
             gcode_cmd += f" F{ feedrate }"
 
         if echo:
