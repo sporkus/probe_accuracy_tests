@@ -7,12 +7,12 @@
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
 # of the License, or (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
@@ -48,7 +48,7 @@ KLIPPY_LOG = "~/klipper_logs/klippy.log"
 DATA_DIR = "/tmp"
 RUNID = datetime.now().strftime("%Y%m%d_%H%M")
 CLEAR_LINE = "\033[1A\x1b[2K"
-
+# CLEAR_LINE = "\n\n"
 class Probe():
     def __init__(self, printer):
         self.printer = printer
@@ -56,6 +56,7 @@ class Probe():
         self.isKlicky = False
         self.isKlippain = False
         self.isTap = False
+        self.isBeacon = False
 
         self._detect()
 
@@ -64,6 +65,7 @@ class Probe():
                 self.isKlicky
             or  self.isKlippain
             or  self.isTap
+            or  self.isBeacon
         )
 
     def lock(self, lock = True):
@@ -100,7 +102,7 @@ class Probe():
         print("Unknown probe error.")
         print("Exiting!")
         sys.exit(1)
-    
+
     def _detect(self):
         print("Probe type: ..." )
 
@@ -124,13 +126,37 @@ class Probe():
             pass
 
         try:
-            endstop_pin = self.printer.config["stepper_z"]["endstop_pin"]
-            print(endstop_pin)
-            if re.search("probe:\s*z_virtual_endstop", endstop_pin):
-                self.isTap = True
-                print(f"{ CLEAR_LINE }Probe type: Tap mode detected")
+            backlash_comp = self.printer.config["idm"].get("backlash_comp", 0)
+            #print(backlash_comp)
+            if backlash_comp:
+                self.isBeacon = True
+                print(f"{ CLEAR_LINE }Probe type: IDM probe detected")
         except:
-            pass
+            try:
+                backlash_comp = self.printer.config["beacon"].get("backlash_comp", 0)
+                #print(backlash_comp)
+                if backlash_comp:
+                    self.isBeacon = True
+                    print(f"{ CLEAR_LINE }Probe type: Beacon probe detected")
+            except:
+                try:
+                    backlash_comp = self.printer.config["cartographer"].get("backlash_comp", 0)
+                    #print(backlash_comp)
+                    if backlash_comp:
+                        self.isBeacon = True
+                        print(f"{ CLEAR_LINE }Probe type: Cartographer probe detected")
+                except:
+
+
+                    try:
+                        endstop_pin = self.printer.config["stepper_z"]["endstop_pin"]
+                        #print(endstop_pin)
+
+                        if re.search("probe:\s*z_virtual_endstop", endstop_pin):
+                            self.isTap = True
+                            print(f"{ CLEAR_LINE }Probe type: Tap mode detected")
+                    except:
+                        pass
 
 
 class Printer:
@@ -179,7 +205,7 @@ class Printer:
     def gcode(self, gcode):
         """Send gcode to printer"""
         self.post("/printer/gcode/script", { "script": gcode })
-    
+
     def conditional_home(self):
         """Home if not done already"""
         homed_axes = self.query("toolhead", "homed_axes")
@@ -238,7 +264,7 @@ class Printer:
         self.gcode("G28")
 
     def _move(
-        self, 
+        self,
         x = None,
         y = None,
         z = None,
@@ -279,6 +305,8 @@ class Printer:
                         .get("safe_z_home", {})
                         .get("z_hop", None)
                 )
+            elif self.probe.isBeacon:
+                self.safe_z = 2
 
             if not self.safe_z:
                 print(
@@ -313,12 +341,38 @@ class Printer:
         )
         return (x, y)
 
-    def _get_bed_corners(self) -> List:
-        x_offset = self.config["probe"].get("x_offset", 0)
-        y_offset = self.config["probe"].get("y_offset", 0)
 
+### TODO: if quad gantry level use those points to probe the corners, if not qgl, then calculate the corner probe points
+    def _get_bed_corners(self) -> List:
+        # try:
+        #     corners_list = self.config["quad_gantry_level"]["points"]
+        #     #print(f"{corners_list}")
+        # except:
+        #     pass
+        try:
+            x_offset = self.config["probe"].get("x_offset", 0)
+            y_offset = self.config["probe"].get("y_offset", 0)
+        except:
+            try:
+                x_offset = self.config["idm"].get("x_offset", 0)
+                y_offset = self.config["idm"].get("y_offset", 0)
+            except:
+                try:
+                    x_offset = self.config["cartographer"].get("x_offset", 0)
+                    y_offset = self.config["cartographer"].get("y_offset", 0)
+                except:
+                    try:
+                        x_offset = self.config["beacon"].get("x_offset", 0)
+                        y_offset = self.config["beacon"].get("y_offset", 0)
+                        except:
+                            pass
+
+
+        # print(f"x_offset{x_offset}\ny_offset{y_offset}")
         xmin, ymin = re.findall(r"[\d.]+", self.config["bed_mesh"]["mesh_min"])
         xmax, ymax = re.findall(r"[\d.]+", self.config["bed_mesh"]["mesh_max"])
+
+        # print(f"xmin{xmin}\nymin{ymin}\nxmax{xmax}\nymax{ymax}")
 
         xmin = float(xmin) - float(x_offset)
         ymin = float(ymin) - float(y_offset)
@@ -625,7 +679,11 @@ class Test_suite():
         data = []
         for i, msg in enumerate(msgs):
             coor = re.findall(r"[\d.]+", msg)
-            x, y, z = [float(k) for k in coor]
+            # print(f"\n\n {coor}")
+            if self.printer.probe.isBeacon:
+                x, y, _, z = [float(k) for k in coor]
+            else:
+                x, y, z = [float(k) for k in coor]
             data.append({
                 "test": testname,
                 "sample_index": i,
@@ -639,8 +697,13 @@ class Test_suite():
             print("Exiting!")
             sys.exit(1)
 
+        try:
+            printer_config_drop_first = self.printer.config["probe"].get("drop_first_result")
+        except:
+            printer_config_drop_first = False
+
         if (
-                self.printer.config["probe"].get("drop_first_result") == "True"
+                printer_config_drop_first # self.printer.config["probe"].get("drop_first_result") == "True"
             and not keep_first
         ):
             data.pop(0)
@@ -663,10 +726,12 @@ class Test_suite():
 
 
     def _summarize_repeatability(self, testframe):
-        probe_config = self.printer.config["probe"]
-
-        agg_method = probe_config.get("samples_result")
-        agg_method = "mean" if agg_method != "median" else "median"
+        try:
+            probe_config = self.printer.config["probe"]
+            agg_method = probe_config.get("samples_result")
+            agg_method = "mean" if agg_method != "median" else "median"
+        except:
+            agg_method = "mean"
 
         n = testframe["sample_index"].drop_duplicates().shape[0]
         n_test = testframe["measurement"].drop_duplicates().shape[0]
@@ -749,7 +814,7 @@ class Test_suite():
             Median:{y.median():.4f}  Mid 50% range:{range50:.4f}
             Range:{range:.4f}{range_flag}  Min:{y.min():.4f}  Max:{y.max():.4f}
         """
-    
+
         outofbound = sum(y < median - 0.01) + sum(y > median + 0.01)
         if outofbound:
             title += " ".join([
@@ -792,7 +857,7 @@ def main(userparams):
         print("ERROR: No probe could be found.", file = sys.stderr)
         sys.exit(1)
     elif not userparams["detect_probe"]:
-        try:            
+        try:
             printer.conditional_home()
             printer.move_center()
 
@@ -923,5 +988,5 @@ if __name__ == "__main__":
         args["output_dir"] = DATA_DIR
     else:
         args["output_dir"] = str(args["output_dir"]).rstrip("/")
-    
+
     main(args)
