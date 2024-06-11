@@ -364,7 +364,7 @@ class Printer:
                     try:
                         x_offset = self.config["beacon"].get("x_offset", 0)
                         y_offset = self.config["beacon"].get("y_offset", 0)
-                        except:
+                    except:
                             pass
 
 
